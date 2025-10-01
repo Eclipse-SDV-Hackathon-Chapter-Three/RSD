@@ -1,4 +1,4 @@
-![Sytsem_Architecture](https://github.com/user-attachments/assets/0788eb1a-3d6e-4457-b8d1-f3be7b4571ac)# Team RSD - Ready Set Drive !
+# Team RSD - Ready Set Drive !
 ![SEA:ME](images/seame_oer_logo.jpeg)
 
 ## Team members
@@ -31,12 +31,13 @@ These layers are then integrated with ADAS features to refine thier behavior:
 By integrating road condition recognition with ADAS, our system aims to achieve safer and more adaptive driving across diverse conditions.
 
 ### System Architecture
-file:///home/gihoon/Downloads/System_Arc.png
+![Sytsem_Architecture](https://github.com/user-attachments/assets/0788eb1a-3d6e-4457-b8d1-f3be7b4571ac)
 
 
 
 ### Data Flow
 file:///home/gihoon/Downloads/Data_Flow.svg
+
 
 
 
