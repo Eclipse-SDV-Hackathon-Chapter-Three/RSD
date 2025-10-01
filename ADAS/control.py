@@ -139,7 +139,7 @@ def main():
     ap.add_argument("--tm_port", type=int, default=8000)
     ap.add_argument("--ego_role", default="ego")
     ap.add_argument("--lead_role", default="lead")
-    ap.add_argument("--lead_speed_kmh", type=float, default=40.0, help="TM 리드 절대 속도(km/h)")
+    ap.add_argument("--lead_speed_kmh", type=float, default=40.0, help="TM lead absolute speed (km/h)")
 
     # Kuksa
     ap.add_argument("--kuksa_host", default="127.0.0.1")
@@ -151,17 +151,17 @@ def main():
     ap.add_argument("--mode_key", default="Vehicle.ADAS.ACC.Ctrl.Mode")
     ap.add_argument("--steer_acc_key", default="Vehicle.ADAS.ACC.Ctrl.Steer")
     ap.add_argument("--steer_lk_key",  default="Vehicle.ADAS.LK.Steering")
-    ap.add_argument("--prefer_acc_steer", type=int, default=1, help="1이면 ACC.Ctrl.Steer 우선, 없으면 LK.Steering")
+    ap.add_argument("--prefer_acc_steer", type=int, default=1, help="If 1, prefer ACC.Ctrl.Steer; otherwise use LK.Steering")
 
     # Filters (throttle/brake)
     ap.add_argument("--steer_deadband", type=float, default=0.01)
-    ap.add_argument("--steer_alpha", type=float, default=0.00, help="조향 EMA 계수(0이면 미사용)")
-    ap.add_argument("--steer_rate", type=float, default=2.0, help="조향 rate limit [norm/s]")
+    ap.add_argument("--steer_alpha", type=float, default=0.00, help="Steering EMA coefficient (0 disables)")
+    ap.add_argument("--steer_rate", type=float, default=2.0, help="Steering rate limit [norm/s]")
     ap.add_argument("--thr_alpha", type=float, default=0.0)
     ap.add_argument("--brk_alpha", type=float, default=0.0)
 
-    # Steering I-term (친구 개선 반영)
-    ap.add_argument("--ki_steer", type=float, default=0.02, help="조향 I 게인(작게)")
+    # Steering I-term
+    ap.add_argument("--ki_steer", type=float, default=0.02, help="Steering I gain (small)")
     ap.add_argument("--i_clip", type=float, default=0.20, help="I항 한계(anti-windup)")
     ap.add_argument("--i_decay_tau", type=float, default=2.0, help="중심 근처에서 I 감쇠 시간상수[s]")
 
@@ -260,8 +260,8 @@ def main():
             else:
                 steer_p = steer
 
-            # 3) I-term with decay near center (친구 개선)
-            #    - 작은 명령일수록 빠르게 감쇠(자연 복원), 큰 편차는 유지
+            # 3) I-term with decay near center
+            # 작은 명령일수록 빠르게 감쇠(자연 복원), 큰 편차는 유지
             if args.i_decay_tau > 1e-6:
                 decay = math.exp(-abs(steer_p) / max(args.i_decay_tau, 1e-6))
             else:
