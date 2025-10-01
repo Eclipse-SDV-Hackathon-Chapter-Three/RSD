@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-control_acc_kuksa.py — Passive controller (ACC + LK via Kuksa) [merged 2025-09-28]
-- Ego: Autopilot OFF, Kuksa 명령(ACC/LK) 읽어 CARLA에 적용
-- Lead: TrafficManager Autopilot ON (옵션, 절대속도 지정 가능)
-- Kuksa 읽기는 target 우선, 없으면 current 폴백
-- 조향 파이프라인: deadband → EMA → I항(anti-windup, 중심감쇠) → rate-limit → apply
-- 틱 처리 후 여유 sleep 옵션(extra_sleep_ratio)로 화면/동작 안정화
+control_acc_kuksa.py — Passive controller (ACC + LK via Kuksa)
+- Ego: Autopilot OFF, read Kuksa commands (ACC/LK) and applies them to CARLA
+- Lead: TrafficManager Autopilot ON (optional; absolute speed can be specified)
+- Kuksa reads prioritize target values; fall back to current values if unavailable
+- Steering pipeline: deadband → EMA → I-term (anti-windup, center damping) → rate-limit → apply
+- After each tick, optional extra sleep (extra_sleep_ratio) to stabilize rendering/behavior
 """
 
 import time, math, argparse, traceback
