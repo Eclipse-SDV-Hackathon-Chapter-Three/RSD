@@ -1,5 +1,4 @@
 # common/lk_algo.py
-# ORIGINAL-STYLE lane-keeping helpers extracted from LK_0903_1.py
 # - HoughP → slope/intercept avg per side
 # - Construct lane endpoints at y_bottom=0.95*h, y_top=0.70*h
 # - Fuse with short-term memory
