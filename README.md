@@ -2,13 +2,13 @@
 ![SEA:ME](images/seame_oer_logo.jpeg)
 
 ## Team members
-|Name|Role|Github Handle|
-|----|----|----|
-|Younggyo Oh|Team Leader|oyg0323|
-|Gihoon Kim|LK developer| JoeyGihoon|
-|Kijin Baek|ACC developer| kiiznii|
+|Name|Github Handle|
+|----|----|
+|Younggyo Oh|oyg0323|
+|Gihoon Kim| JoeyGihoon|
+|Kijin Baek| kiiznii|
 |Siwoo Lee||Siwoo248|
-|Changseok Oh|Eclipse Tools Research|Changseok-Oh29|
+|Changseok Oh|Changseok-Oh29|
 
 
 ---
