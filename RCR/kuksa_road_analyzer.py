@@ -3,7 +3,7 @@
 #
 # Zenoh subscriber → 항상 최신 프레임만 덮어쓰기 → 메인 루프에서 처리
 # 큐에 쌓이는 문제 없이 최신 상태만 반영됨
-# 영
+
 import os, sys, json, time, traceback
 import numpy as np
 import cv2
