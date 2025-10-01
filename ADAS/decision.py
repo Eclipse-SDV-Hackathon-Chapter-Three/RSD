@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-decision_lk_acc_kuksa.py — LK + ACC (Kuksa/Zenoh)  [2025-09-28 patched]
+decision_lk_acc_kuksa.py — LK + ACC (Kuksa/Zenoh)
 - 카메라(zenoh)로 차선 검출 → LK 스티어 계산 후 Kuksa에 publish
 - Kuksa의 ACC 센서(거리/상대속도/ttc/타깃유무/리드추정속도)를 읽어 ACC 출력(thr/brk/mode) 계산 후 Kuksa에 publish
 - publish는 dual-write(target + current)로 작성해 어떤 control도 값을 읽도록 보장
@@ -294,14 +294,14 @@ def main():
 
     # CARLA (옵션 연결)
     ego = None
-    world = None                      # >>> 루프 재탐색에서 쓸 world 보관
-    _last_seek = 0.0              # >>> 마지막 재탐색 시각
+    world = None
+    _last_seek = 0.0
 
     if carla and args.use_carla_speed:
         try:
             client = carla.Client(args.carla_host, int(args.carla_port))
             client.set_timeout(float(args.carla_timeout))
-            world = client.get_world()                                   # >>>
+            world = client.get_world()
             ego = find_actor_by_role(world, args.carla_role)
 
             s = world.get_settings()
@@ -421,7 +421,7 @@ def main():
                 except Exception:
                     v_mps = 0.0
             v_kmh = v_mps * 3.6
-            # lookahead_ratio는 "km/h" 기준으로 사용 (친구 코드의 TODO 반영)
+            # lookahead_ratio는 "km/h" 기준으로 사용
             y_anchor = int(lookahead_ratio(v_kmh if v_kmh > 0 else args.anchor_speed_kmh) * h)
 
             x_cam_mid = w // 2
