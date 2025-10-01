@@ -207,7 +207,7 @@ def main():
     def ema(name, value):
         prev = state[name]
         if value is None:
-            return prev  # 이전값 유지(초기엔 None일 수 있음)
+            return prev  # keep previous value (may be None at initialization)
         state[name] = value if prev is None else (1.0 - EMA_ALPHA) * prev + EMA_ALPHA * value
         return state[name]
 
