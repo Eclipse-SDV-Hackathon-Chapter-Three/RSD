@@ -31,6 +31,8 @@ These layers are then integrated with ADAS features to refine thier behavior:
 By integrating road condition recognition with ADAS, our system aims to achieve safer and more adaptive driving across diverse conditions.
 
 ### System Architecture
+<img width="859" height="351" alt="System_Architecture_" src="https://github.com/user-attachments/assets/9f2d40a1-2930-4349-9112-98efcf92353a" />
+
 
 ### Data Flow
 <img width="1602" height="755" alt="Screenshot from 2025-09-30 19-07-35" src="https://github.com/user-attachments/assets/e71f12de-2452-449a-a66c-08073fa596c1" />
