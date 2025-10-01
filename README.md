@@ -31,12 +31,12 @@ These layers are then integrated with ADAS features to refine thier behavior:
 By integrating road condition recognition with ADAS, our system aims to achieve safer and more adaptive driving across diverse conditions.
 
 ### System Architecture
-![Sytsem_Architecture](https://github.com/user-attachments/assets/0788eb1a-3d6e-4457-b8d1-f3be7b4571ac)
+![System Archrtecture](images/System_Architecture.svg)
 
 
 
 ### Data Flow
-file:///home/gihoon/Downloads/Data_Flow.svg
+![Data Flow](images/Data_Flow.svg)
 
 
 
