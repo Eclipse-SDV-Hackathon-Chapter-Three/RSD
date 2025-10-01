@@ -2,16 +2,16 @@
 # -*- coding: utf-8 -*-
 
 """
-Env_ADAS.py — CARLA 센서 → Kuksa(VSS) 직접 write + 카메라 Zenoh publish
+Env.py — CARLA sensor → Kuksa(VSS) direct write + Camera Zenoh publish
 
-- Front 카메라: Zenoh로 BGRA 버퍼 전송(디스플레이/디버깅용)
-- 레이더: ACC 5개 센서값 (Distance, RelSpeed, TTC, HasTarget, LeadSpeedEst)을 Kuksa에 set_current_values
-- Lead 차량은 Traffic Manager로 속도 고정 주행(옵션)
-- 에고 속도도 VSS("Vehicle.Speed", m/s)로 같이 퍼블리시해서 decision에서 참조 가능
+- Front camera : Send BGRA buffer via Zenoh (for display / debugging)
+- Radar : Publish 5 ACC sensor values (Distance, RelSpeed, TTC, HasTarget, LeadSpeedEst) to Kuksa using set_current_values
+- Lead vehicle : Optionally runs with fixed speed using Traffic Manager
+- Ego speed is also published as VSS ("Vehicle.Speed", m/s) for reference in decision module
 
-주의:
-- CARLA RADAR의 velocity는 +가 멀어짐, -가 접근 → 여기서는 '접근=+'가 되도록 v_sign=-1.0 적용
-  (decision은 --rv_sign 1.0로 맞추면 일관됨)
+Note:
+- In CARLA RADAR, velocity is + when moving away and - when approaching → here we apply v_sign = -1.0 to make 'approaching is positive'
+  (For decision module, use --rv_sign 1.0 to keep consistency)
 """
 
 import os, time, json, math, argparse, signal, sys
@@ -35,19 +35,19 @@ except AttributeError:
 sess = zenoh.open(cfg)
 pub  = sess.declare_publisher('carla/cam/front')
 
-# ------------- 기본 파라미터/유틸 -------------
+# ------------- Basic parameters / utilities -------------
 IMG_W        = int(os.environ.get("IMG_W", "640"))
 IMG_H        = int(os.environ.get("IMG_H", "480"))
 SENSOR_TICK  = float(os.environ.get("SENSOR_TICK", "0.05"))   # 20Hz
 STATUS_EVERY = float(os.environ.get("STATUS_EVERY", "5.0"))
 
-# RADAR 처리 파라미터
-RADAR_V_SIGN = -1.0   # CARLA vel(+ 멀어짐)을 '접근=+'로 바꾸려면 -1.0
-AZI_MAX_DEG  = 6.0   # 수평 각도 게이팅(완화)
-ALT_MIN_DEG  = -0.5   # 수직 각도 게이팅(완화)
+# RADAR processing parameters
+RADAR_V_SIGN = -1.0   # Convert CARLA vel(+ is moving away) to make 'approaching is positive' → multiply by -1.0
+AZI_MAX_DEG  = 6.0   # Horizontal angle gating (relaxed)
+ALT_MIN_DEG  = -0.5   # Vertical angle gating (relaxed)
 ALT_MAX_DEG  =  2.5
-EPS_APPROACH = 0.3    # m/s, TTC 유한 판단 임계
-EMA_ALPHA    = 0.25   # 1차 필터 강도(0~1)
+EPS_APPROACH = 0.3    # m/s, threshold for finite TTC judgment
+EMA_ALPHA    = 0.25   # First-order filter strength (0~1)
 writer = None
 def cleanup_and_exit(signum, frame):
     try:
@@ -75,7 +75,7 @@ def main():
     ap.add_argument('--width', type=int, default=640)
     ap.add_argument('--height', type=int, default=480)
     ap.add_argument('--fov', type=float, default=90.0)
-    ap.add_argument('--display', type=int, default=0) #1이면 화면 나옴 
+    ap.add_argument('--display', type=int, default=0) # if 1, window display enabled
     ap.add_argument('--record', type=str, default='')
     ap.add_argument('--record_mode', choices=['raw','vis','both'], default='vis')
     ap.add_argument('--tm_port', type=int, default=8000)
@@ -84,7 +84,7 @@ def main():
     ap.add_argument('--cam_log', type=int, default=0)
     args = ap.parse_args()
 
-    # --- CARLA 연결/세팅 ---
+    # --- CARLA connection / setting ---
     client = carla.Client(args.host, args.port)
     client.set_timeout(5.0)
     world = client.get_world()
@@ -96,16 +96,16 @@ def main():
     settings.fixed_delta_seconds = dt
     settings.substepping = True
     settings.max_substep_delta_time = 0.005   # 5 ms
-    settings.max_substeps = 10                # 최대 200 Hz 내부 물리
+    settings.max_substeps = 10                # up to 200Hz internal physics
     world.apply_settings(settings)
     print(f"[WORLD] synchronous_mode=True, delta_seconds={dt:.3f}")
 
-    # --- Kuksa 연결 ---
+    # --- Kuksa connection ---
     kuksa = VSSClient(args.host, args.kuksa_port)
     kuksa.connect()
     print(f"[KUKSA] Connected to {args.host}:{args.kuksa_port}")
 
-    # --- 차량 스폰 ---
+    # --- spawn car ---
     bp = world.get_blueprint_library()
 
     # ego
@@ -128,7 +128,7 @@ def main():
     if lead is None:
         raise RuntimeError("Failed to spawn Lead. Try another spawn_idx or free the spawn point.")
 
-    # --- Traffic Manager로 lead 주행 ---
+    # --- Traffic Manager for lead vehicle driving ---
     '''
     try:
         tm = client.get_trafficmanager(args.tm_port)
@@ -136,7 +136,7 @@ def main():
         except Exception: pass
 
         lead.set_autopilot(True, args.tm_port)
-        try: tm.auto_lane_change(lead, False)  # 차선 변경 금지
+        try: tm.auto_lane_change(lead, False)  # disable lane change
         except Exception: pass
         try: tm.set_desired_speed(lead, float(args.lead_speed_kmh))  # km/h
         except Exception: pass
@@ -146,7 +146,7 @@ def main():
         print("[WARN] TM setup failed:", e)
         '''
 
-    # --- 센서 부착 ---
+    # --- Sensor attachment ---
     # Front camera
     cam_bp = bp.find('sensor.camera.rgb')
     cam_bp.set_attribute('image_size_x', str(args.width))
@@ -165,7 +165,7 @@ def main():
     radar_tf = carla.Transform(carla.Location(x=2.8, z=1.0))
     radar    = world.spawn_actor(radar_bp, radar_tf, attach_to=ego)
 
-    # (옵션) chase cam
+    # (Optional) chase cam
     chase = None
     latest_chase = {'bgr': None}
     try:
@@ -183,7 +183,7 @@ def main():
     except Exception as e:
         print(f"[WARN] Failed to attach chase camera: {e}")
 
-    # --- 카메라 → Zenoh ---
+    # --- Camera → Zenoh ---
     latest_front = {'bgr': None}
     def on_cam(img: carla.Image):
         buf = memoryview(img.raw_data)
@@ -193,7 +193,7 @@ def main():
             "sim_ts": float(img.timestamp), "pub_ts": time.time()
         }).encode("utf-8")
         pub.put(bytes(buf), attachment=att)
-        # 로컬 디스플레이용 복사
+        # For local display copy
         arr = np.frombuffer(img.raw_data, dtype=np.uint8).reshape((img.height, img.width, 4))
         latest_front['bgr'] = arr[:, :, :3].copy()
         if args.cam_log:
@@ -201,8 +201,8 @@ def main():
 
     cam.listen(on_cam)
 
-    # --- 레이더 → Kuksa(VSS) ---
-    # EMA 상태
+    # --- Radar → Kuksa(VSS) ---
+    # EMA state
     state = {"d": None, "vr": None, "vlead": None, "ttc": None}
     def ema(name, value):
         prev = state[name]
@@ -211,20 +211,20 @@ def main():
         state[name] = value if prev is None else (1.0 - EMA_ALPHA) * prev + EMA_ALPHA * value
         return state[name]
 
-    # 타깃 메모리(잠깐 끊겨도 유지)
+    # Target memory (keep target for a short while even if signal is lost)
     TARGET_MEM_SEC = 0.4
     last = {"ts": 0.0, "d": 9999.9, "rel": 0.0, "ttc": 9999.9, "has": False, "vlead": 0.0}
 
     def on_radar(meas: carla.RadarMeasurement):
         try:
-            # 1) 각도/거리 게이팅
+            # 1) Angle/distance gating
             cand = []
             for d in meas:
                 az, alt = math.degrees(d.azimuth), math.degrees(d.altitude)
                 if abs(az) <= AZI_MAX_DEG and (ALT_MIN_DEG <= alt <= ALT_MAX_DEG) and d.depth >= 1.0:
                     cand.append(d)
 
-            # 2) 타깃 없음 처리(메모리 유지)
+            # 2) No target handling (keep last memory)
             if not cand:
                 now = time.time()
                 if (now - last["ts"] <= TARGET_MEM_SEC) and last["has"]:
@@ -247,7 +247,7 @@ def main():
                     kuksa.set_current_values(updates)
                 return
 
-            # 3) 가까운 것 3개 가중 평균(1/depth)
+            # 3) Weighted average of closest 3 detections (weight = 1/depth)
             cand.sort(key=lambda x: x.depth)
             picks = cand[:min(3, len(cand))]
             ws    = [1.0 / max(1e-3, p.depth) for p in picks]
@@ -255,36 +255,34 @@ def main():
 
             dist = sum(p.depth * w for p, w in zip(picks, ws)) / wsum
             rel  = sum((RADAR_V_SIGN * p.velocity) * w for p, w in zip(picks, ws)) / wsum  # 접근=+
-            # 평균 방위각(라디안) — 이후 yaw 보정과 동적 게이트에 사용
+            # Average azimuth (rad) — used later for yaw correction and dynamic gating
             az_avg_rad = sum((p.azimuth) * w for p, w in zip(picks, ws)) / wsum
             az_avg_deg = az_avg_rad * 180.0 / math.pi
  
 
-            # 4) ego 속도
+            # 4) Ego speed
             v = ego.get_velocity()
             ego_speed = math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z)
 
-            # 5) TTC (접근일 때만 유한)
-         # 4.5) ego yaw-rate 보정: 회전으로 생기는 가짜 방사속도 제거
-            omega_z = float(ego.get_angular_velocity().z)  # rad/s (CARLA 기본 단위)
-            # 회전 유발 방사속도 ≈ ω * d * sin(azimuth)
+            # 4.5) Ego yaw-rate correction: remove fake radial velocity due to turning
+            omega_z = float(ego.get_angular_velocity().z)  # rad/s (CARLA basic unit)
+            # Rotation-induced radial velocity ≈ ω * d * sin(azimuth)
             rel_rot  = omega_z * dist * math.sin(az_avg_rad)
             rel_corr = rel - rel_rot
 
-            # 5) TTC (접근일 때만 유한) — 보정된 rel 사용
-            EPS_APPROACH = 0.12  # 곡선에서 과탐지 줄이려 0.12~0.2 권장
+            # 5) TTC (finite only when approaching) — use corrected rel
+            EPS_APPROACH = 0.12  # Recommended 0.12~0.2 to reduce false positives in curves
             if rel_corr > EPS_APPROACH:
                 ttc = max(0.1, dist / rel_corr)
             else:
                 ttc = float('inf')
 
-            # 6) 유효 타깃 판정
-             # 5.5) 커브일 때 azimuth 게이트 동적 축소(예: |ω|≥0.3 rad/s → ±6°)
+            # 5.5) Dynamic azimuth gate shrink when turning (e.g., |ω|≥0.3 rad/s → ±6°)
             base_gate_deg = 10.0
             min_gate_deg  = 6.0
             gate_deg = base_gate_deg if abs(omega_z) < 0.3 else min_gate_deg
 
-            # 6) 유효 타깃 판정(강화)
+            # 6) Valid target judgment (enhanced)
             HAS_TARGET_DIST_GATE = 60.0  # m
             has_target = (
                 math.isfinite(ttc)
@@ -293,17 +291,17 @@ def main():
                 and (abs(az_avg_deg) <= gate_deg)
             )
 
-            # 7) 정규화 + EMA
+            # 7) Normalization + EMA
             dist = clamp(dist, 0.0, 500.0)
             rel  = clamp(rel_corr,  -100.0, 100.0)
             lead_est = clamp(ego_speed - rel, 0.0, 100.0)
             ttc_out  = 9999.9 if not math.isfinite(ttc) else clamp(ttc, 0.0, 1e4)
-            # None을 넣지 말고, 이전값이 있으면 이전값/없으면 9999.9로 대체해 숫자 보장
+            # Do not insert None; guarantee numeric value by using the previous value if it exists, otherwise default to 9999.9
             prev_ttc = state["ttc"]
             ttc_in   = ttc_out if ttc_out < 9000.0 else (prev_ttc if (prev_ttc is not None) else 9999.9)
             ttc_f    = ema("ttc", ttc_in)
-            ttc_send = (ttc_f if ttc_f is not None else 9999.9)   # 전송 값은 숫자로 보장 (핵심)
-                        # >>> 누락된 EMA 계산 추가 <<<
+            ttc_send = (ttc_f if ttc_f is not None else 9999.9)   # Always guarantee numeric TTC (important)
+            # >>> Added missing EMA calculations <<<
             dist_f = ema("d",   dist)
             rel_f  = ema("vr",  rel)
             vle_f  = ema("vlead", lead_est)
@@ -316,7 +314,7 @@ def main():
             }
             kuksa.set_current_values(updates)
 
-            # 타깃 메모리 갱신
+            # Update target memory
             now = time.time()
             last.update({"ts": now, "d": dist_f, "rel": rel_f, "ttc": ttc_send, "has": bool(has_target), "vlead": vle_f})
 
@@ -326,7 +324,7 @@ def main():
                       f"ω={omega_z:+.2f}rad/s az={az_avg_deg:+.1f}° gate=±{gate_deg:.0f}° has={has_target}")
 
         except Exception:
-            # 실패 시 '타깃 없음' 폴백
+            # On failure, fallback as "no target"
             updates = {
                 "Vehicle.ADAS.ACC.Distance":     Datapoint(9999.9),
                 "Vehicle.ADAS.ACC.RelSpeed":     Datapoint(0.0),
@@ -336,11 +334,11 @@ def main():
             }
             try: kuksa.set_current_values(updates)
             except Exception: pass
-            # 디버깅 필요 시: print("[RADAR] fallback:", repr(e))
+            # For debugging : print("[RADAR] fallback:", repr(e))
 
     radar.listen(on_radar)
 
-    # --- 표시 창 ---
+    # --- Display windows ---
     if args.display:
         cv2.namedWindow('front', cv2.WINDOW_NORMAL)
         if chase is not None:
@@ -348,13 +346,13 @@ def main():
 
     print("[RUN] Streaming... (Ctrl+C to stop)")
 
-    # --- 메인 루프 ---
+    # --- Main loop ---
     try:
         last_status = time.time()
         while True:
             world.tick()
 
-            # 에고 속도 VSS 퍼블리시(결정에서 읽어 v 표시/게인에 활용)
+            # Publish ego speed to VSS (used in decision for display/control gains)
             try:
                 v = ego.get_velocity()
                 ego_speed_mps = float(math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z))
@@ -378,11 +376,11 @@ def main():
                 if (cv2.waitKey(1) & 0xFF) == ord('q'):
                     break
 
-            time.sleep(0.003)  # CPU 여유
+            time.sleep(0.003)  # give CPU rest
     except KeyboardInterrupt:
         print("\n[STOP] Ctrl+C")
     finally:
-        # 정리
+        # Clean up
         try: cam.stop(); radar.stop()
         except Exception: pass
         for a in [cam, radar, lead, ego]:
