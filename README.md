@@ -3,11 +3,11 @@
 
 ## Team members
 |Name|Github Handle|
-|----|----|
+|------|------|
 |Younggyo Oh|oyg0323|
 |Gihoon Kim| JoeyGihoon|
 |Kijin Baek| kiiznii|
-|Siwoo Lee||Siwoo248|
+|Siwoo Lee|Siwoo248|
 |Changseok Oh|Changseok-Oh29|
 
 
