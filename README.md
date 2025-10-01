@@ -51,7 +51,9 @@ By integrating road condition recognition with ADAS, our system aims to achieve 
 - Communication between modules will be aligned and refined through continuous integration.
 - Appropriate Eclipse tools will be applied in each part of the project to support data communication and orchestration.
 - CARLA simulator will be used regularly to validate the system, identify errors, and improve reliability through iterative testing and debugging.
+### Communication in the team
 - Project progress and decisions will be continuously documented in the shared workspace, allowing all team members to access and collaborate effectively.
+### Decision making
 - Decisions will be made collaboratively through open discussions, ensuring the project moves in the right direction during the hackathon.
 
 
