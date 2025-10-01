@@ -36,7 +36,7 @@ By integrating road condition recognition with ADAS, our system aims to achieve 
 
 
 ### Data Flow
-![Data Flow](images/Data_Flow.svg)
+![Data Flow](images/Data_Structure.svg)
 
 
 
