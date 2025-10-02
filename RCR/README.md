@@ -11,7 +11,7 @@ The RCR module estimates road surface conditions using camera-based analysis and
 ## Data Flow
 - Camera (Zenoh) → Road Analyzer → Kuksa
 - Ego dynamics (IMU, wheel slip) → Slip Estimator → Kuksa
-- State Fuser → Combines both → Kuksa ('Vehicle.Private.StateFused.*')
+- State Fuser → Combines both (camera and slip) → Kuksa ('Vehicle.Private.StateFused.*')
 
 ## Key Features
 - Metrics : Specular Reflection Index (SRI, aka. reflection rate), Laplacian variance (aka. clarity), Edge density (aka. how many patterns, edges)
