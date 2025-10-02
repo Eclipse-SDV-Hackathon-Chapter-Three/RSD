@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-lead_scenario.py — LKAS + 코너/정지/시나리오, S1 자동 DRY->WET (CARLA 프리셋만) 전환
-
-변경 요약
-- 날씨는 CARLA 내장 프리셋만 사용 (예: Default, WetNoon, MidRainyNight 등)
-- S1(1번 시나리오)에서 주행거리 s >= 150m 부터 wet_ramp_sec 동안 DRY->WET( WetNoon )로 부드럽게 전환
-- 전환 시 타이어 마찰(슬립율)은 변경하지 않음 (S1 동안은 시작값 유지)
-- d/w/i 핫키도 프리셋으로만 동작, 리셋 없이 즉시 적용
+test.py 
 """
 
 import sys, time, math, threading, queue
@@ -17,7 +11,7 @@ from typing import List, Optional
 import carla
 import zenoh
 
-# ===== Zenoh (reset 신호용, 선택) =====
+# ===== Zenoh (reset) =====
 cfg = zenoh.Config()
 try:
     cfg.insert_json5("mode", '"client"')
@@ -29,7 +23,7 @@ z_sess = zenoh.open(cfg)
 reset_pub = z_sess.declare_publisher("scenario/reset")
 
 # =========================
-# 유틸
+
 # =========================
 def clamp(v, lo, hi):
     return lo if v < lo else hi if v > hi else v
@@ -54,12 +48,11 @@ def teleport(v: carla.Vehicle, tf: carla.Transform):
     v.set_simulate_physics(True)
 
 def lerp(a, b, t):
-    """선형보간: t∈[0,1]로 클램프"""
+    
     t = 0.0 if t < 0.0 else 1.0 if t > 1.0 else t
     return a + (b - a) * t
 
 def weather_lerp(base: carla.WeatherParameters, target: carla.WeatherParameters, alpha: float):
-    """CARLA 날씨 프리셋 간 보간 (햇빛/안개 등은 base 유지로 시각 끊김 최소화)"""
     return carla.WeatherParameters(
         cloudiness             = lerp(base.cloudiness,             target.cloudiness, alpha),
         precipitation          = lerp(base.precipitation,          target.precipitation, alpha),
@@ -78,7 +71,6 @@ def weather_lerp(base: carla.WeatherParameters, target: carla.WeatherParameters,
     )
 
 # =========================
-# s-프레임 (거리 기반 제어용)
 # =========================
 class TrackFrame:
     def __init__(self, start: carla.Location, end: carla.Location):
@@ -108,7 +100,7 @@ def build_s_frame_for_length(amap: carla.Map, base_tf: carla.Transform, length_m
     track_frame.set_line(base_tf.location, cur.transform.location)
 
 # =========================
-# PID (속도 제어)
+# PID
 # =========================
 class PID:
     def __init__(self, kp, ki, kd, i_limit=2.0):
@@ -125,7 +117,7 @@ class PID:
         return self.kp*e + self.ki*self.i + self.kd*d
 
 # =========================
-# Lane-Lock 경로
+# Lane-Lock
 # =========================
 @dataclass
 class LaneLock:
@@ -158,7 +150,7 @@ def nearest_index_on_path(path, loc, hint=0, window=50):
     return best_i
 
 # =========================
-# LKAS (Stanley 변형)
+# LKAS
 # =========================
 class LKAS:
     def __init__(self, k_e=0.9, k_h=1.0, k_soft=1.0, steer_rate=1.5, alpha=0.4):
@@ -190,7 +182,7 @@ class LKAS:
         return float(clamp(filtered, -1.0, 1.0))
 
 # =========================
-# 시나리오
+# Scenario
 # =========================
 @dataclass
 class Scenario:
@@ -204,7 +196,6 @@ class Scenario:
     stop_zones: List[float] = field(default_factory=list)
 
 def get_scenario(sid: int, original_weather: carla.WeatherParameters) -> Scenario:
-    """CARLA 프리셋만 사용"""
     if sid == 0:
         return Scenario(0, "S0", "mixed", carla.WeatherParameters.Default, 60.0, 250.0, 300.0, [])
     if sid == 1:
@@ -215,11 +206,10 @@ def get_scenario(sid: int, original_weather: carla.WeatherParameters) -> Scenari
         return Scenario(3, "S3", "straight", carla.WeatherParameters.WetSunset, 55.0, 200.0, 250.0, [])
     return get_scenario(0, original_weather)
 
-# ----- 날씨 적용 (프리셋 그대로) -----
+
 def apply_weather_preset(world: carla.World, preset: carla.WeatherParameters):
     world.set_weather(preset)
 
-# ----- 슬립 적용 (ego만) -----
 def apply_slip_to_ego(ego: carla.Vehicle, scenario: Scenario, slip_k=0.9, dry_k=3.5):
     pc = ego.get_physics_control()
     try:
@@ -230,7 +220,6 @@ def apply_slip_to_ego(ego: carla.Vehicle, scenario: Scenario, slip_k=0.9, dry_k=
     except Exception:
         pass
 
-    # 시나리오 2,3만 저마찰. S1은 마찰 변경 없음(요청사항).
     wheels = pc.wheels
     if scenario.sid in (2, 3):
         for w in wheels:
@@ -244,7 +233,7 @@ def apply_slip_to_ego(ego: carla.Vehicle, scenario: Scenario, slip_k=0.9, dry_k=
     print(f"[EGO] Slip applied (friction={pc.wheels[0].tire_friction}) for scenario {scenario.sid}")
 
 # =========================
-# 입력 스레드
+
 # =========================
 def start_input_thread(cmd_q: "queue.Queue[str]"):
     def _run():
@@ -257,7 +246,7 @@ def start_input_thread(cmd_q: "queue.Queue[str]"):
     threading.Thread(target=_run, daemon=True).start()
 
 # =========================
-# 차량 찾기
+
 # =========================
 def find_ego(world: carla.World):
     xs = [a for a in world.get_actors().filter("vehicle.*") if a.attributes.get("role_name")=="ego"]
@@ -270,7 +259,7 @@ def find_lead(world: carla.World):
     return xs[0]
 
 # =========================
-# 위치 리셋
+
 # =========================
 def reset_positions(world, amap, ego, lead, scenario: Scenario, sps):
     if scenario.sid == 0:
@@ -296,7 +285,7 @@ def reset_positions(world, amap, ego, lead, scenario: Scenario, sps):
     zero_vel(ego); zero_vel(lead); time.sleep(0.3)
 
 # =========================
-# 빠른 날씨 전환 (리셋 없음, 프리셋만)
+
 # =========================
 def quick_set_weather(world: carla.World, ego: carla.Vehicle, preset: carla.WeatherParameters, sid_for_log: int):
     apply_weather_preset(world, preset)
@@ -304,7 +293,7 @@ def quick_set_weather(world: carla.World, ego: carla.Vehicle, preset: carla.Weat
     print(f"[WEATHER] set to preset ({preset}) for S{sid_for_log}")
 
 # =========================
-# 메인
+
 # =========================
 def main():
     import argparse
@@ -313,10 +302,9 @@ def main():
     ap.add_argument("--port", type=int, default=2000)
     ap.add_argument("--start_scenario", type=int, default=0)
 
-    # 자동 날씨 전환 옵션 (S1에서만 적용)
     ap.add_argument("--auto_weather", type=int, default=1)
-    ap.add_argument("--wet_start_s", type=float, default=150.0)   # DRY->WET 시작 거리[m]
-    ap.add_argument("--wet_ramp_sec", type=float, default=3.0)   # 전환 시간[s]
+    ap.add_argument("--wet_start_s", type=float, default=150.0)   # DRY->WET 
+    ap.add_argument("--wet_ramp_sec", type=float, default=3.0)   
 
     args=ap.parse_args()
 
@@ -327,10 +315,9 @@ def main():
 
     ego=find_ego(world); lead=find_lead(world)
 
-    # --- 센서 보관용 (GC 방지) ---
     sensors=[]
 
-    # 충돌 센서 (lead에 부착)
+
     collision_bp = bp_lib.find('sensor.other.collision')
     collided = {"hit": False}
     def on_collision(ev):
@@ -340,35 +327,35 @@ def main():
     sensors.append(collision_sensor)
     collision_sensor.listen(on_collision)
 
-    # 초기 시나리오 적용
+
     sid=int(args.start_scenario); scenario=get_scenario(sid, original_weather)
     reset_positions(world, amap, ego, lead, scenario, sps)
     apply_weather_preset(world, scenario.weather)
-    apply_slip_to_ego(ego, scenario)   # S1은 마찰=건조값 유지
+    apply_slip_to_ego(ego, scenario)  
 
-    # Lane-Lock & Path
+ 
     start_wp = amap.get_waypoint(lead.get_transform().location, project_to_road=True, lane_type=carla.LaneType.Driving)
     lane_lock = LaneLock(start_wp.road_id, start_wp.lane_id)
     path = build_lane_locked_path(amap, start_wp, lane_lock, 2000.0, 2.0)
 
-    # 제어기
+
     speed_pid = PID(0.60, 0.05, 0.02)
     lkas = LKAS()
     idx_hint=0
 
-    # kmh_cmd 부드럽게
+    # kmh_cmd 
     kmh_cmd_smooth = scenario.target_kmh
 
     print(f"[SCENARIO] {scenario.name}  (0/1/2/3 전환, q 종료)")
 
-    # S3 stop zone 상태
+    # S3 stop zone 
     sz = {"visited": set(), "phase":"none", "t0":0.0, "v0":0.0, "hold_until":0.0}
 
-    # 입력 스레드
+
     cmd_q: "queue.Queue[str]" = queue.Queue()
     start_input_thread(cmd_q)
 
-    # S1 자동 DRY->WET 상태
+    # S1 DRY->WET 
     aw = {"phase": 0, "t0": 0.0, "w0": world.get_weather(), "w1": None}
 
     last_dt=0.05
@@ -379,34 +366,31 @@ def main():
             dt=snap.timestamp.delta_seconds if snap else last_dt; last_dt=dt
             now=time.time()
 
-            # 입력 처리
+
             try: cmd=cmd_q.get_nowait()
             except queue.Empty: cmd=None
             if cmd in ("q","Q"): break
             if cmd in ("0","1","2","3"):
-                # 기존 센서 정리
+
                 for s in sensors:
                     try: s.stop(); s.destroy()
                     except: pass
                 sensors.clear()
                 collided["hit"]=False
 
-                # 상태 리셋
                 speed_pid.reset(); lkas.reset(); idx_hint=0
 
-                # 새 시나리오
+
                 sid=int(cmd); scenario=get_scenario(sid, original_weather)
                 reset_positions(world, amap, ego, lead, scenario, sps)
                 apply_weather_preset(world, scenario.weather)
                 apply_slip_to_ego(ego, scenario)
                 reset_pub.put(b"reset")
 
-                # 경로 재구축
                 start_wp = amap.get_waypoint(lead.get_transform().location, project_to_road=True, lane_type=carla.LaneType.Driving)
                 lane_lock = LaneLock(start_wp.road_id, start_wp.lane_id)
                 path = build_lane_locked_path(amap, start_wp, lane_lock, 2000.0, 2.0)
 
-                # 새 충돌 센서 부착
                 collision_sensor = world.spawn_actor(collision_bp, carla.Transform(), attach_to=lead)
                 sensors.append(collision_sensor)
                 collision_sensor.listen(on_collision)
@@ -414,35 +398,34 @@ def main():
                 kmh_cmd_smooth = scenario.target_kmh
                 print(f"\n[SCENARIO] {scenario.name}")
 
-                # 자동전환 상태 초기화
+
                 aw = {"phase": 0, "t0": 0.0, "w0": world.get_weather(), "w1": None}
                 continue
 
-            # 빠른 날씨 전환 (프리셋, 리셋 없음)
+
             if cmd in ("d","D"):  # DRY
                 quick_set_weather(world, ego, carla.WeatherParameters.Default, sid_for_log=scenario.sid); continue
             if cmd in ("w","W"):  # WET
                 quick_set_weather(world, ego, carla.WeatherParameters.WetCloudyNoon, sid_for_log=scenario.sid); continue
-            if cmd in ("i","I"):  # ICY 느낌(시각만 WetSunset, 마찰 변경 없음)
+            if cmd in ("i","I"):  # ICY 
                 quick_set_weather(world, ego, carla.WeatherParameters.WetSunset, sid_for_log=scenario.sid); continue
 
-            # 리드차량 상태
+
             tf=lead.get_transform(); loc=tf.location; yaw=tf.rotation.yaw
             v=lead.get_velocity(); speed=math.sqrt(v.x*v.x+v.y*v.y+v.z*v.z); speed_kmh=3.6*speed
             s=track_frame.s_on_line(loc)
 
-            # 로그 (2초마다)
+
             if now - last_print >= 2.0:
                 print(f"[INFO] Speed = {speed_kmh:.1f} km/h, s = {s:.1f} m")
                 last_print = now
 
-            # 충돌 시 정지 유지
+
             if collided["hit"]:
                 lead.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0, brake=1.0, hand_brake=True))
                 speed_pid.reset(); lkas.reset()
                 continue
 
-            # 기본 목표 속도
             kmh_target = scenario.target_kmh
 
             # ===== S3 stop zones: -4 m/s² → 5s hold → resume =====
@@ -468,9 +451,9 @@ def main():
                     if now >= sz["hold_until"]:
                         sz["phase"]="none"
                         speed_pid.reset()
-                    continue  # hold 중에는 나머지 제어 건너뜀
+                    continue 
 
-            # ===== 최종 정지: 550 m부터 선형 감속, 600 m에서 완전 정지 =====
+            # ==========
             if scenario.decel_start <= s < scenario.stop_s:
                 v_allow = scenario.target_kmh * (scenario.stop_s - s) / max((scenario.stop_s - scenario.decel_start), 1e-3)
                 kmh_target = min(kmh_target, v_allow)
@@ -479,7 +462,7 @@ def main():
                 speed_pid.reset(); lkas.reset()
                 continue
 
-            # ===== 코너 감속: 60 m 앞 예측 =====
+
             try:
                 wp_now = amap.get_waypoint(loc, project_to_road=True, lane_type=carla.LaneType.Driving)
                 nxt = wp_now.next(60.0)
@@ -494,7 +477,6 @@ def main():
             except:
                 pass
 
-            # ===== 속도 명령 부드럽게: slew limit =====
             max_down = 10.0 * dt
             max_up   = 15.0 * dt
             if kmh_target < kmh_cmd_smooth:
@@ -502,7 +484,6 @@ def main():
             else:
                 kmh_cmd_smooth = min(kmh_target, kmh_cmd_smooth + max_up)
 
-            # ===== 경로 연장 / LKAS / 속도제어 =====
             if idx_hint > len(path) - 80:
                 start_wp = amap.get_waypoint(tf.location, project_to_road=True, lane_type=carla.LaneType.Driving)
                 lane_lock = LaneLock(start_wp.road_id, start_wp.lane_id)
@@ -522,13 +503,13 @@ def main():
                                                     steer=float(steer),
                                                     brake=float(brake)))
 
-            # ===== S1 자동 DRY->WET (CARLA 프리셋만, 마찰 변경 없음) =====
+            # ===== S1 DRY->WET =====
             if args.auto_weather and scenario.sid == 1:
                 if aw["phase"] == 0 and s >= args.wet_start_s:
                     aw["phase"] = 1
                     aw["t0"] = now
                     aw["w0"] = world.get_weather()
-                    aw["w1"] = carla.WeatherParameters.HardRainNoon  # 목표 프리셋
+                    aw["w1"] = carla.WeatherParameters.HardRainNoon 
 
                 if aw["phase"] == 1:
                     a = (now - aw["t0"]) / max(0.001, args.wet_ramp_sec)
@@ -539,16 +520,15 @@ def main():
                         world.set_weather(weather_lerp(aw["w0"], aw["w1"], a))
 
     finally:
-        # 센서 정리
         try:
             for s in sensors:
                 try: s.stop(); s.destroy()
                 except: pass
         except: pass
-        # 날씨 복구
+
         try: world.set_weather(original_weather)
         except: pass
-        print("[CLEANUP] 종료")
+        print("[CLEANUP]")
 
 if __name__=="__main__":
     main()
